@@ -49,32 +49,28 @@ using namespace llvm;
 
 namespace {
 
-  class AFLCoverage : public ModulePass {
+class AFLCoverage : public ModulePass {
 
-    public:
+public:
+  static char ID;
+  AFLCoverage() : ModulePass(ID) {}
 
-      static char ID;
-      AFLCoverage() : ModulePass(ID) { }
+  bool runOnModule(Module &M) override;
 
-      bool runOnModule(Module &M) override;
+  // StringRef getPassName() const override {
+  //  return "American Fuzzy Lop Instrumentation";
+  // }
+};
 
-      // StringRef getPassName() const override {
-      //  return "American Fuzzy Lop Instrumentation";
-      // }
-
-  };
-
-}
-
+} // namespace
 
 char AFLCoverage::ID = 0;
-
 
 bool AFLCoverage::runOnModule(Module &M) {
 
   LLVMContext &C = M.getContext();
 
-  IntegerType *Int8Ty  = IntegerType::getInt8Ty(C);
+  IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
 
   /* Show a banner */
@@ -83,13 +79,15 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   if (isatty(2) && !getenv("AFL_QUIET")) {
 
-    SAYF(cCYA "afl-llvm-pass " cBRI VERSION cRST " by <lszekeres@google.com>\n");
+    SAYF(cCYA "afl-llvm-pass " cBRI VERSION cRST
+              " by <lszekeres@google.com>\n");
 
-  } else be_quiet = 1;
+  } else
+    be_quiet = 1;
 
   /* Decide instrumentation ratio */
 
-  char* inst_ratio_str = getenv("AFL_INST_RATIO");
+  char *inst_ratio_str = getenv("AFL_INST_RATIO");
   unsigned int inst_ratio = 100;
 
   if (inst_ratio_str) {
@@ -97,7 +95,6 @@ bool AFLCoverage::runOnModule(Module &M) {
     if (sscanf(inst_ratio_str, "%u", &inst_ratio) != 1 || !inst_ratio ||
         inst_ratio > 100)
       FATAL("Bad value of AFL_INST_RATIO (must be between 1 and 100)");
-
   }
 
   /* Get globals for the SHM region and the previous location. Note that
@@ -108,8 +105,8 @@ bool AFLCoverage::runOnModule(Module &M) {
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
-      M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc",
-      0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
+      M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc", 0,
+      GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
   /* Instrument all the things! */
 
@@ -121,7 +118,8 @@ bool AFLCoverage::runOnModule(Module &M) {
       BasicBlock::iterator IP = BB.getFirstInsertionPt();
       IRBuilder<> IRB(&(*IP));
 
-      if (AFL_R(100) >= inst_ratio) continue;
+      if (AFL_R(100) >= inst_ratio)
+        continue;
 
       /* Make up cur_loc */
 
@@ -157,36 +155,37 @@ bool AFLCoverage::runOnModule(Module &M) {
       Store->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
       inst_blocks++;
-
     }
 
   /* Say something nice. */
 
   if (!be_quiet) {
 
-    if (!inst_blocks) WARNF("No instrumentation targets found.");
-    else OKF("Instrumented %u locations (%s mode, ratio %u%%).",
-             inst_blocks, getenv("AFL_HARDEN") ? "hardened" :
-             ((getenv("AFL_USE_ASAN") || getenv("AFL_USE_MSAN")) ?
-              "ASAN/MSAN" : "non-hardened"), inst_ratio);
-
+    if (!inst_blocks)
+      WARNF("No instrumentation targets found.");
+    else
+      OKF("Instrumented %u locations (%s mode, ratio %u%%).", inst_blocks,
+          getenv("AFL_HARDEN")
+              ? "hardened"
+              : ((getenv("AFL_USE_ASAN") || getenv("AFL_USE_MSAN"))
+                     ? "ASAN/MSAN"
+                     : "non-hardened"),
+          inst_ratio);
   }
 
   return true;
-
 }
-
 
 static void registerAFLPass(const PassManagerBuilder &,
                             legacy::PassManagerBase &PM) {
 
   PM.add(new AFLCoverage());
-
 }
 
+static RegisterStandardPasses
+    RegisterAFLPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
+                    registerAFLPass);
 
-static RegisterStandardPasses RegisterAFLPass(
-    PassManagerBuilder::EP_ModuleOptimizerEarly, registerAFLPass);
-
-static RegisterStandardPasses RegisterAFLPass0(
-    PassManagerBuilder::EP_EnabledOnOptLevel0, registerAFLPass);
+static RegisterStandardPasses
+    RegisterAFLPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                     registerAFLPass);

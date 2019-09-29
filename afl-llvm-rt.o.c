@@ -29,43 +29,40 @@
 #include "../config.h"
 #include "../types.h"
 
+#include <assert.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <unistd.h>
 #include <string.h>
-#include <assert.h>
+#include <unistd.h>
 
 #include <sys/mman.h>
 #include <sys/shm.h>
-#include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 /* This is a somewhat ugly hack for the experimental 'trace-pc-guard' mode.
    Basically, we need to make sure that the forkserver is initialized after
    the LLVM-generated runtime initialization pass, not before. */
 
 #ifdef USE_TRACE_PC
-#  define CONST_PRIO 5
+#define CONST_PRIO 5
 #else
-#  define CONST_PRIO 0
+#define CONST_PRIO 0
 #endif /* ^USE_TRACE_PC */
 
-
 /* Globals needed by the injected instrumentation. The __afl_area_initial region
-   is used for instrumentation output before __afl_map_shm() has a chance to run.
-   It will end up as .comm, so it shouldn't be too wasteful. */
+   is used for instrumentation output before __afl_map_shm() has a chance to
+   run. It will end up as .comm, so it shouldn't be too wasteful. */
 
-u8  __afl_area_initial[MAP_SIZE];
-u8* __afl_area_ptr = __afl_area_initial;
+u8 __afl_area_initial[MAP_SIZE];
+u8 *__afl_area_ptr = __afl_area_initial;
 
 __thread u32 __afl_prev_loc;
-
 
 /* Running in persistent mode? */
 
 static u8 is_persistent;
-
 
 /* SHM setup. */
 
@@ -85,17 +82,15 @@ static void __afl_map_shm(void) {
 
     /* Whooooops. */
 
-    if (__afl_area_ptr == (void *)-1) _exit(1);
+    if (__afl_area_ptr == (void *)-1)
+      _exit(1);
 
     /* Write something into the bitmap so that even with low AFL_INST_RATIO,
        our parent doesn't give up on us. */
 
     __afl_area_ptr[0] = 1;
-
   }
-
 }
-
 
 /* Fork server logic. */
 
@@ -104,12 +99,13 @@ static void __afl_start_forkserver(void) {
   static u8 tmp[4];
   s32 child_pid;
 
-  u8  child_stopped = 0;
+  u8 child_stopped = 0;
 
   /* Phone home and tell the parent that we're OK. If parent isn't there,
      assume we're not running in forkserver mode and just execute program. */
 
-  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
+  if (write(FORKSRV_FD + 1, tmp, 4) != 4)
+    return;
 
   while (1) {
 
@@ -118,7 +114,8 @@ static void __afl_start_forkserver(void) {
 
     /* Wait for parent by reading from the pipe. Abort if read fails. */
 
-    if (read(FORKSRV_FD, &was_killed, 4) != 4) _exit(1);
+    if (read(FORKSRV_FD, &was_killed, 4) != 4)
+      _exit(1);
 
     /* If we stopped the child in persistent mode, but there was a race
        condition and afl-fuzz already issued SIGKILL, write off the old
@@ -126,7 +123,8 @@ static void __afl_start_forkserver(void) {
 
     if (child_stopped && was_killed) {
       child_stopped = 0;
-      if (waitpid(child_pid, &status, 0) < 0) _exit(1);
+      if (waitpid(child_pid, &status, 0) < 0)
+        _exit(1);
     }
 
     if (!child_stopped) {
@@ -134,7 +132,8 @@ static void __afl_start_forkserver(void) {
       /* Once woken up, create a clone of our process. */
 
       child_pid = fork();
-      if (child_pid < 0) _exit(1);
+      if (child_pid < 0)
+        _exit(1);
 
       /* In child process: close fds, resume execution. */
 
@@ -143,7 +142,6 @@ static void __afl_start_forkserver(void) {
         close(FORKSRV_FD);
         close(FORKSRV_FD + 1);
         return;
-  
       }
 
     } else {
@@ -153,12 +151,12 @@ static void __afl_start_forkserver(void) {
 
       kill(child_pid, SIGCONT);
       child_stopped = 0;
-
     }
 
     /* In parent process: write PID to pipe, then wait for child. */
 
-    if (write(FORKSRV_FD + 1, &child_pid, 4) != 4) _exit(1);
+    if (write(FORKSRV_FD + 1, &child_pid, 4) != 4)
+      _exit(1);
 
     if (waitpid(child_pid, &status, is_persistent ? WUNTRACED : 0) < 0)
       _exit(1);
@@ -167,22 +165,21 @@ static void __afl_start_forkserver(void) {
        a successful run. In this case, we want to wake it up without forking
        again. */
 
-    if (WIFSTOPPED(status)) child_stopped = 1;
+    if (WIFSTOPPED(status))
+      child_stopped = 1;
 
     /* Relay wait status to pipe, then loop back. */
 
-    if (write(FORKSRV_FD + 1, &status, 4) != 4) _exit(1);
-
+    if (write(FORKSRV_FD + 1, &status, 4) != 4)
+      _exit(1);
   }
-
 }
-
 
 /* A simplified persistent mode handler, used as explained in README.llvm. */
 
 int __afl_persistent_loop(unsigned int max_cnt) {
 
-  static u8  first_pass = 1;
+  static u8 first_pass = 1;
   static u32 cycle_cnt;
 
   if (first_pass) {
@@ -199,10 +196,9 @@ int __afl_persistent_loop(unsigned int max_cnt) {
       __afl_prev_loc = 0;
     }
 
-    cycle_cnt  = max_cnt;
+    cycle_cnt = max_cnt;
     first_pass = 0;
     return 1;
-
   }
 
   if (is_persistent) {
@@ -223,15 +219,11 @@ int __afl_persistent_loop(unsigned int max_cnt) {
          dummy output region. */
 
       __afl_area_ptr = __afl_area_initial;
-
     }
-
   }
 
   return 0;
-
 }
-
 
 /* This one can be called from user code when deferred forkserver mode
     is enabled. */
@@ -245,11 +237,8 @@ void __afl_manual_init(void) {
     __afl_map_shm();
     __afl_start_forkserver();
     init_done = 1;
-
   }
-
 }
-
 
 /* Proper initialization routine. */
 
@@ -257,12 +246,11 @@ __attribute__((constructor(CONST_PRIO))) void __afl_auto_init(void) {
 
   is_persistent = !!getenv(PERSIST_ENV_VAR);
 
-  if (getenv(DEFER_ENV_VAR)) return;
+  if (getenv(DEFER_ENV_VAR))
+    return;
 
   __afl_manual_init();
-
 }
-
 
 /* The following stuff deals with supporting -fsanitize-coverage=trace-pc-guard.
    It remains non-operational in the traditional, plugin-backed LLVM mode.
@@ -271,24 +259,25 @@ __attribute__((constructor(CONST_PRIO))) void __afl_auto_init(void) {
    The first function (__sanitizer_cov_trace_pc_guard) is called back on every
    edge (as opposed to every basic block). */
 
-void __sanitizer_cov_trace_pc_guard(uint32_t* guard) {
+void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
   __afl_area_ptr[*guard]++;
 }
-
 
 /* Init callback. Populates instrumentation IDs. Note that we're using
    ID of 0 as a special value to indicate non-instrumented bits. That may
    still touch the bitmap, but in a fairly harmless way. */
 
-void __sanitizer_cov_trace_pc_guard_init(uint32_t* start, uint32_t* stop) {
+void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 
   u32 inst_ratio = 100;
-  u8* x;
+  u8 *x;
 
-  if (start == stop || *start) return;
+  if (start == stop || *start)
+    return;
 
   x = getenv("AFL_INST_RATIO");
-  if (x) inst_ratio = atoi(x);
+  if (x)
+    inst_ratio = atoi(x);
 
   if (!inst_ratio || inst_ratio > 100) {
     fprintf(stderr, "[-] ERROR: Invalid AFL_INST_RATIO (must be 1-100).\n");
@@ -303,11 +292,11 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t* start, uint32_t* stop) {
 
   while (start < stop) {
 
-    if (R(100) < inst_ratio) *start = R(MAP_SIZE - 1) + 1;
-    else *start = 0;
+    if (R(100) < inst_ratio)
+      *start = R(MAP_SIZE - 1) + 1;
+    else
+      *start = 0;
 
     start++;
-
   }
-
 }
