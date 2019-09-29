@@ -33,6 +33,7 @@
 
 #include "../config.h"
 #include "../debug.h"
+#include "llvm-config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,8 +71,11 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   LLVMContext &C = M.getContext();
 
+  assert(NGRAM_SIZE > 1 && "NGRAM_SIZE must be > 1");
+
   IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
+  VectorType *PrevLocTy = VectorType::get(Int32Ty, TUPLE_HISTORY_COUNT);
 
   /* Show a banner */
 
@@ -105,8 +109,21 @@ bool AFLCoverage::runOnModule(Module &M) {
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
-      M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc", 0,
+      M, PrevLocTy, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc", 0,
       GlobalVariable::GeneralDynamicTLSModel, 0, false);
+
+  /* Create the vector shuffle mask for updating the previous block history.
+     Note that the first element of the vector will store cur_loc, so just set
+     it to undef to allow the optimizer to do its thing. */
+
+  SmallVector<Constant *, 12> PrevLocShuffle = {UndefValue::get(Int32Ty),
+                                                ConstantInt::get(Int32Ty, 0)};
+
+  for (unsigned I = 1; I < TUPLE_HISTORY_COUNT - 1; ++I) {
+    PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, I));
+  }
+
+  Constant *PrevLocShuffleMask = ConstantVector::get(PrevLocShuffle);
 
   /* Instrument all the things! */
 
@@ -127,11 +144,19 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
-      /* Load prev_loc */
+      /* Load prev_loc_trans */
 
-      LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
-      PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-      Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
+      LoadInst *PrevLocVec = IRB.CreateLoad(AFLPrevLoc);
+      PrevLocVec->setMetadata(M.getMDKindID("nosanitize"),
+                              MDNode::get(C, None));
+
+      /* "For efficiency, we propose to hash the tuple as a key into the
+         hit_count map as (prev_block_trans << 1) ^ curr_block_trans, where
+         prev_block_trans = (block_trans_1 ^ ... ^ block_trans_(n-1)" */
+
+      Value *PrevLocTrans = IRB.CreateShl(IRB.CreateXorReduce(PrevLocVec), 1);
+      Value *PrevLocCasted = IRB.CreateZExt(
+          IRB.CreateIntCast(PrevLocTrans, IRB.getInt16Ty(), false), Int32Ty);
 
       /* Load SHM pointer */
 
@@ -148,10 +173,14 @@ bool AFLCoverage::runOnModule(Module &M) {
       IRB.CreateStore(Incr, MapPtrIdx)
           ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
-      /* Set prev_loc to cur_loc >> 1 */
+      /* Update prev_loc history vector (by placing cur_loc at the head of the
+         vector and shuffle the other elements back by one) */
 
-      StoreInst *Store =
-          IRB.CreateStore(ConstantInt::get(Int32Ty, cur_loc >> 1), AFLPrevLoc);
+      Value *ShuffledPrevLoc = IRB.CreateShuffleVector(
+          PrevLocVec, UndefValue::get(PrevLocTy), PrevLocShuffleMask);
+      Value *UpdatedPrevLoc =
+          IRB.CreateInsertElement(ShuffledPrevLoc, CurLoc, (uint64_t)0);
+      StoreInst *Store = IRB.CreateStore(UpdatedPrevLoc, AFLPrevLoc);
       Store->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
       inst_blocks++;

@@ -28,6 +28,7 @@
 
 #include "../config.h"
 #include "../types.h"
+#include "llvm-config.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -58,7 +59,7 @@
 u8 __afl_area_initial[MAP_SIZE];
 u8 *__afl_area_ptr = __afl_area_initial;
 
-__thread u32 __afl_prev_loc;
+__thread u32 __afl_prev_loc[TUPLE_HISTORY_COUNT];
 
 /* Running in persistent mode? */
 
@@ -193,7 +194,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
 
       memset(__afl_area_ptr, 0, MAP_SIZE);
       __afl_area_ptr[0] = 1;
-      __afl_prev_loc = 0;
+      memset(__afl_prev_loc, 0, TUPLE_HISTORY_COUNT);
     }
 
     cycle_cnt = max_cnt;
@@ -208,7 +209,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
       raise(SIGSTOP);
 
       __afl_area_ptr[0] = 1;
-      __afl_prev_loc = 0;
+      memset(__afl_prev_loc, 0, TUPLE_HISTORY_COUNT);
 
       return 1;
 
