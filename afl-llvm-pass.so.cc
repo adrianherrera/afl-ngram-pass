@@ -116,11 +116,13 @@ bool AFLCoverage::runOnModule(Module &M) {
      Note that the first element of the vector will store cur_loc, so just set
      it to undef to allow the optimizer to do its thing. */
 
-  SmallVector<Constant *, 12> PrevLocShuffle = {UndefValue::get(Int32Ty),
-                                                ConstantInt::get(Int32Ty, 0)};
+  SmallVector<Constant *, 12> PrevLocShuffle = {UndefValue::get(Int32Ty)};
+  if (TUPLE_HISTORY_COUNT > 1) {
+    PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, 0));
 
-  for (unsigned I = 1; I < TUPLE_HISTORY_COUNT - 1; ++I) {
-    PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, I));
+    for (unsigned I = 1; I < TUPLE_HISTORY_COUNT - 1; ++I) {
+      PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, I));
+    }
   }
 
   Constant *PrevLocShuffleMask = ConstantVector::get(PrevLocShuffle);
