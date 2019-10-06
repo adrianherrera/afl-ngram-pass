@@ -44,6 +44,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace llvm;
@@ -71,11 +72,8 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   LLVMContext &C = M.getContext();
 
-  assert(NGRAM_SIZE > 1 && "NGRAM_SIZE must be > 1");
-
   IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
-  VectorType *PrevLocTy = VectorType::get(Int32Ty, TUPLE_HISTORY_COUNT);
 
   /* Show a banner */
 
@@ -108,21 +106,41 @@ bool AFLCoverage::runOnModule(Module &M) {
       new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
+  /* Decide previous location vector size (must be a power of two) */
+
+  char *ngram_size_str = getenv("AFL_NGRAM_SIZE");
+  unsigned int ngram_size = 4;
+
+  if (ngram_size_str) {
+    if (sscanf(ngram_size_str, "%u", &ngram_size) != 1 || ngram_size < 2 ||
+        ngram_size > MAX_NGRAM_SIZE) {
+      FATAL(
+          "Bad value of AFL_NGRAM_SIZE (must be between 2 and MAX_NGRAM_SIZE)");
+    }
+  }
+
+  unsigned PrevLocSize = ngram_size - 1;
+  uint64_t PrevLocVecSize = PowerOf2Ceil(PrevLocSize);
+  VectorType *PrevLocTy = VectorType::get(Int32Ty, PrevLocVecSize);
+
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
-      M, PrevLocTy, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc", 0,
-      GlobalVariable::GeneralDynamicTLSModel, 0, false);
+      M, PrevLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
+      /* Initializer */ nullptr, "__afl_prev_loc",
+      /* InsertBefore */ nullptr, GlobalVariable::GeneralDynamicTLSModel,
+      /* AddressSpace */ 0, /* IsExternallyInitialized */ false);
 
   /* Create the vector shuffle mask for updating the previous block history.
      Note that the first element of the vector will store cur_loc, so just set
      it to undef to allow the optimizer to do its thing. */
 
-  SmallVector<Constant *, 12> PrevLocShuffle = {UndefValue::get(Int32Ty)};
-  if (TUPLE_HISTORY_COUNT > 1) {
-    PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, 0));
+  SmallVector<Constant *, 32> PrevLocShuffle = {UndefValue::get(Int32Ty)};
 
-    for (unsigned I = 1; I < TUPLE_HISTORY_COUNT - 1; ++I) {
-      PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, I));
-    }
+  for (unsigned I = 0; I < PrevLocSize - 1; ++I) {
+    PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, I));
+  }
+
+  for (unsigned I = PrevLocSize; I < PrevLocVecSize; ++I) {
+    PrevLocShuffle.push_back(ConstantInt::get(Int32Ty, PrevLocSize));
   }
 
   Constant *PrevLocShuffleMask = ConstantVector::get(PrevLocShuffle);

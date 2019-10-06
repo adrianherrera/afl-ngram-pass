@@ -15,6 +15,5 @@ achieve the same results when compiling source code.
 Simply copy the source files into AFL's `llvm_mode` directory and build
 `afl-clang-fast` as normal.
 
-The size of `n` (i.e., the number of branches to remember) is a compile-time
-constant that can be set by specifying `CXXFLAGS="-DNGRAM_SIZE=12"` or by
-modifying `llvm-config.h`.
+The size of `n` (i.e., the number of branches to remember) is an option that can
+be specified in the `AFL_NGRAM_SIZE` environment variable.
