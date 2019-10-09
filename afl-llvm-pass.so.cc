@@ -74,6 +74,8 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
+  IntegerType *IntLocTy =
+      IntegerType::getIntNTy(C, sizeof(PREV_LOC_T) * CHAR_BIT);
 
   /* Show a banner */
 
@@ -121,7 +123,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   unsigned PrevLocSize = ngram_size - 1;
   uint64_t PrevLocVecSize = PowerOf2Ceil(PrevLocSize);
-  VectorType *PrevLocTy = VectorType::get(Int32Ty, PrevLocVecSize);
+  VectorType *PrevLocTy = VectorType::get(IntLocTy, PrevLocVecSize);
 
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
       M, PrevLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
@@ -162,7 +164,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       unsigned int cur_loc = AFL_R(MAP_SIZE);
 
-      ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+      ConstantInt *CurLoc = ConstantInt::get(IntLocTy, cur_loc);
 
       /* Load prev_loc_trans */
 
@@ -175,15 +177,13 @@ bool AFLCoverage::runOnModule(Module &M) {
          prev_block_trans = (block_trans_1 ^ ... ^ block_trans_(n-1)" */
 
       Value *PrevLocTrans = IRB.CreateShl(IRB.CreateXorReduce(PrevLocVec), 1);
-      Value *PrevLocCasted = IRB.CreateZExt(
-          IRB.CreateIntCast(PrevLocTrans, IRB.getInt16Ty(), false), Int32Ty);
 
       /* Load SHM pointer */
 
       LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
       MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-      Value *MapPtrIdx =
-          IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
+      Value *MapPtrIdx = IRB.CreateGEP(
+          MapPtr, IRB.CreateZExt(IRB.CreateXor(PrevLocTrans, CurLoc), Int32Ty));
 
       /* Update bitmap */
 
