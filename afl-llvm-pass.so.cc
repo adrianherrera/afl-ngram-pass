@@ -84,7 +84,7 @@ bool AFLCoverage::runOnModule(Module &M) {
   if (isatty(2) && !getenv("AFL_QUIET")) {
 
     SAYF(cCYA "afl-llvm-pass " cBRI VERSION cRST
-              " by <lszekeres@google.com>\n");
+              " by <lszekeres@google.com, adrian.herrera@anu.edu.au>\n");
 
   } else
     be_quiet = 1;
@@ -176,7 +176,7 @@ bool AFLCoverage::runOnModule(Module &M) {
          hit_count map as (prev_block_trans << 1) ^ curr_block_trans, where
          prev_block_trans = (block_trans_1 ^ ... ^ block_trans_(n-1)" */
 
-      Value *PrevLocTrans = IRB.CreateShl(IRB.CreateXorReduce(PrevLocVec), 1);
+      Value *PrevLocTrans = IRB.CreateXorReduce(PrevLocVec);
 
       /* Load SHM pointer */
 
@@ -198,8 +198,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       Value *ShuffledPrevLoc = IRB.CreateShuffleVector(
           PrevLocVec, UndefValue::get(PrevLocTy), PrevLocShuffleMask);
-      Value *UpdatedPrevLoc =
-          IRB.CreateInsertElement(ShuffledPrevLoc, CurLoc, (uint64_t)0);
+      Value *UpdatedPrevLoc = IRB.CreateInsertElement(ShuffledPrevLoc, IRB.CreateLShr(CurLoc, (uint64_t)0), (uint64_t)0);
       StoreInst *Store = IRB.CreateStore(UpdatedPrevLoc, AFLPrevLoc);
       Store->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
