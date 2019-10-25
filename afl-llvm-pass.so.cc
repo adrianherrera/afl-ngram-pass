@@ -183,7 +183,7 @@ bool AFLCoverage::runOnModule(Module &M) {
       LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
       MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *MapPtrIdx = IRB.CreateGEP(
-          MapPtr, IRB.CreateZExt(IRB.CreateXor(PrevLocTrans, CurLoc), Int32Ty));
+          MapPtr, IRB.CreateZExt(IRB.CreateXor(IRB.CreateLShr(PrevLocTrans, (uint64_t) 1) , CurLoc), Int32Ty));
 
       /* Update bitmap */
 
