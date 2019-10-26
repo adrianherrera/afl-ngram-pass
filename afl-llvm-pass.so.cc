@@ -199,7 +199,7 @@ bool AFLCoverage::runOnModule(Module &M) {
       Value *ShuffledPrevLoc = IRB.CreateShuffleVector(
           PrevLocVec, UndefValue::get(PrevLocTy), PrevLocShuffleMask);
       Value *UpdatedPrevLoc = IRB.CreateInsertElement(
-          ShuffledPrevLoc, IRB.CreateLShr(CurLoc, (uint64_t)0), (uint64_t)0);
+          ShuffledPrevLoc, IRB.CreateLShr(CurLoc, (uint64_t)1), (uint64_t)0);
       StoreInst *Store = IRB.CreateStore(UpdatedPrevLoc, AFLPrevLoc);
       Store->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
