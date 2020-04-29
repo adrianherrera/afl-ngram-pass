@@ -123,7 +123,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   unsigned PrevLocSize = ngram_size - 1;
   uint64_t PrevLocVecSize = PowerOf2Ceil(PrevLocSize);
-  VectorType *PrevLocTy = VectorType::get(IntLocTy, PrevLocVecSize);
+  Type *PrevLocTy = VectorType::get(IntLocTy, PrevLocVecSize);
 
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
       M, PrevLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
