@@ -12,8 +12,8 @@ achieve the same results when compiling source code.
 
 ## Usage
 
-Simply copy the source files into AFL's `llvm_mode` directory and build
-`afl-clang-fast` as normal.
+Simply copy the source files from **either** `circular-buf` or `vectorized` into
+AFL's `llvm_mode` directory and build `afl-clang-fast` as normal.
 
 The size of `n` (i.e., the number of branches to remember) is an option that can
 be specified in the `AFL_NGRAM_SIZE` environment variable.
