@@ -33,7 +33,7 @@
 
 #include "../config.h"
 #include "../debug.h"
-#include "llvm-config.h"
+#include "afl-ngram.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,8 +74,6 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
-  IntegerType *IntLocTy =
-      IntegerType::getIntNTy(C, sizeof(PREV_LOC_T) * CHAR_BIT);
 
   /* Show a banner */
 
@@ -123,7 +121,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   unsigned PrevLocSize = ngram_size - 1;
   uint64_t PrevLocVecSize = PowerOf2Ceil(PrevLocSize);
-  Type *PrevLocTy = VectorType::get(IntLocTy, PrevLocVecSize);
+  Type *PrevLocTy = VectorType::get(Int32Ty, PrevLocVecSize);
 
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
       M, PrevLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
@@ -164,7 +162,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       unsigned int cur_loc = AFL_R(MAP_SIZE);
 
-      ConstantInt *CurLoc = ConstantInt::get(IntLocTy, cur_loc);
+      ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
       /* Load prev_loc_trans */
 

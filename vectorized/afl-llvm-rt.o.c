@@ -28,7 +28,7 @@
 
 #include "../config.h"
 #include "../types.h"
-#include "llvm-config.h"
+#include "afl-ngram.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -59,7 +59,7 @@
 u8 __afl_area_initial[MAP_SIZE];
 u8 *__afl_area_ptr = __afl_area_initial;
 
-__thread PREV_LOC_T __afl_prev_loc[MAX_NGRAM_SIZE];
+__thread u32 __afl_prev_loc[MAX_NGRAM_SIZE];
 
 /* Running in persistent mode? */
 
@@ -194,7 +194,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
 
       memset(__afl_area_ptr, 0, MAP_SIZE);
       __afl_area_ptr[0] = 1;
-      memset(__afl_prev_loc, 0, MAX_NGRAM_SIZE * sizeof(PREV_LOC_T));
+      memset(__afl_prev_loc, 0, MAX_NGRAM_SIZE * sizeof(u32));
     }
 
     cycle_cnt = max_cnt;
@@ -209,7 +209,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
       raise(SIGSTOP);
 
       __afl_area_ptr[0] = 1;
-      memset(__afl_prev_loc, 0, MAX_NGRAM_SIZE * sizeof(PREV_LOC_T));
+      memset(__afl_prev_loc, 0, MAX_NGRAM_SIZE * sizeof(u32));
 
       return 1;
 

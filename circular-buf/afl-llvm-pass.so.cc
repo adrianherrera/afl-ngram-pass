@@ -33,7 +33,7 @@
 
 #include "../config.h"
 #include "../debug.h"
-#include "llvm-config.h"
+#include "afl-ngram.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,8 +73,6 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
-  IntegerType *IntLocTy =
-      IntegerType::getIntNTy(C, sizeof(PREV_LOC_T) * CHAR_BIT);
 
   /* Show a banner */
 
@@ -109,7 +107,7 @@ bool AFLCoverage::runOnModule(Module &M) {
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
-      M, IntLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
+      M, Int32Ty, /* isConstant */ false, GlobalValue::ExternalLinkage,
       /* Initializer */ nullptr, "__afl_prev_loc",
       /* InsertBefore */ nullptr, GlobalVariable::GeneralDynamicTLSModel,
       /* AddressSpace */ 0, /* IsExternallyInitialized */ false);
@@ -132,7 +130,7 @@ bool AFLCoverage::runOnModule(Module &M) {
   /* Pointer to a circular buffer containing the history of the last N block
      transitions (i.e., edges) traversed */
   GlobalVariable *AFLEdgeHistPtr = new GlobalVariable(
-      M, IntLocTy->getPointerTo(), /* isConstant */ false,
+      M, Int32Ty->getPointerTo(), /* isConstant */ false,
       GlobalValue::ExternalLinkage, /* Initializer */ nullptr,
       "__afl_edge_hist_ptr", /* InsertBefore */ nullptr,
       GlobalVariable::GeneralDynamicTLSModel, /* AddressSpace */ 0,
@@ -141,7 +139,7 @@ bool AFLCoverage::runOnModule(Module &M) {
   /* Index into the edge history circular buffer. Points to the oldest element
      in the buffer */
   GlobalVariable *AFLEdgeHistIdx = new GlobalVariable(
-      M, IntLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
+      M, Int32Ty, /* isConstant */ false, GlobalValue::ExternalLinkage,
       /* Initializer */ nullptr, "__afl_edge_hist_idx",
       /* InsertBefore */ nullptr, GlobalVariable::GeneralDynamicTLSModel,
       /* AddressSpace */ 0, /* IsExternallyInitialized */ false);
@@ -151,7 +149,7 @@ bool AFLCoverage::runOnModule(Module &M) {
      removing the oldest edge just involves an xor of the oldest value in the
      circular buffer */
   GlobalVariable *AFLPrevEdgeAcc = new GlobalVariable(
-      M, IntLocTy, /* isConstant */ false, GlobalValue::ExternalLinkage,
+      M, Int32Ty, /* isConstant */ false, GlobalValue::ExternalLinkage,
       /* Initializer */ nullptr, "__afl_prev_edge_acc",
       /* InsertBefore */ nullptr, GlobalVariable::GeneralDynamicTLSModel,
       /* AddressSpace */ 0, /* IsExternallyInitialized */ false);
@@ -172,7 +170,7 @@ bool AFLCoverage::runOnModule(Module &M) {
       /* Make up cur_loc */
 
       unsigned int cur_loc = AFL_R(MAP_SIZE);
-      ConstantInt *CurLoc = ConstantInt::get(IntLocTy, cur_loc);
+      ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
       /* Load prev_loc */
 
@@ -192,13 +190,14 @@ bool AFLCoverage::runOnModule(Module &M) {
          accumulation of the previous N edges right-shifted by one */
 
       LoadInst *PrevEdgeAcc = IRB.CreateLoad(AFLPrevEdgeAcc);
-      PrevEdgeAcc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+      PrevEdgeAcc->setMetadata(M.getMDKindID("nosanitize"),
+                               MDNode::get(C, None));
 
       Value *PrevEdgeAccRightShift = IRB.CreateLShr(PrevEdgeAcc, (uint64_t)1);
 
       Value *MapPtrIdx = IRB.CreateGEP(
-          MapPtr,
-          IRB.CreateZExt(IRB.CreateXor(CurEdge, PrevEdgeAccRightShift), Int32Ty));
+          MapPtr, IRB.CreateZExt(IRB.CreateXor(CurEdge, PrevEdgeAccRightShift),
+                                 Int32Ty));
 
       /* Update bitmap */
 
@@ -250,8 +249,8 @@ bool AFLCoverage::runOnModule(Module &M) {
          ensure that the index wraps around apppropriately */
 
       Value *NewEdgeHistIdx = IRB.CreateURem(
-          IRB.CreateAdd(EdgeHistIdx, ConstantInt::get(IntLocTy, 1)),
-          ConstantInt::get(IntLocTy, HistSize));
+          IRB.CreateAdd(EdgeHistIdx, ConstantInt::get(Int32Ty, 1)),
+          ConstantInt::get(Int32Ty, HistSize));
 
       IRB.CreateStore(NewEdgeHistIdx, AFLEdgeHistIdx)
           ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));

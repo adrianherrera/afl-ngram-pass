@@ -28,7 +28,7 @@
 
 #include "../config.h"
 #include "../types.h"
-#include "llvm-config.h"
+#include "afl-ngram.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -59,12 +59,12 @@
 u8 __afl_area_initial[MAP_SIZE];
 u8 *__afl_area_ptr = __afl_area_initial;
 
-__thread PREV_LOC_T __afl_prev_loc;
+__thread u32 __afl_prev_loc;
 
-__thread PREV_LOC_T __afl_edge_hist_initial[MAX_NGRAM_SIZE];
-__thread PREV_LOC_T *__afl_edge_hist_ptr = NULL;
-__thread PREV_LOC_T __afl_edge_hist_idx = 0;
-__thread PREV_LOC_T __afl_prev_edge_acc = 0;
+__thread u32 __afl_edge_hist_initial[MAX_NGRAM_SIZE];
+__thread u32 *__afl_edge_hist_ptr = NULL;
+__thread u32 __afl_edge_hist_idx = 0;
+__thread u32 __afl_prev_edge_acc = 0;
 
 /* Running in persistent mode? */
 
@@ -200,7 +200,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
       memset(__afl_area_ptr, 0, MAP_SIZE);
       __afl_area_ptr[0] = 1;
       __afl_edge_hist_ptr = __afl_edge_hist_initial;
-      memset(__afl_edge_hist_ptr, 0, MAX_NGRAM_SIZE * sizeof(PREV_LOC_T));
+      memset(__afl_edge_hist_ptr, 0, MAX_NGRAM_SIZE * sizeof(u32));
       __afl_edge_hist_idx = 0;
       __afl_prev_edge_acc = 0;
     }
@@ -218,7 +218,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
 
       __afl_area_ptr[0] = 1;
       __afl_edge_hist_ptr = __afl_edge_hist_initial;
-      memset(__afl_edge_hist_ptr, 0, MAX_NGRAM_SIZE * sizeof(PREV_LOC_T));
+      memset(__afl_edge_hist_ptr, 0, MAX_NGRAM_SIZE * sizeof(u32));
       __afl_edge_hist_idx = 0;
       __afl_prev_edge_acc = 0;
 
@@ -257,7 +257,7 @@ void __afl_manual_init(void) {
 __attribute__((constructor(CONST_PRIO))) void __afl_auto_init(void) {
   /* Setup the circular buffer for edge history */
   __afl_edge_hist_ptr = __afl_edge_hist_initial;
-  memset(__afl_edge_hist_ptr, 0, MAX_NGRAM_SIZE * sizeof(PREV_LOC_T));
+  memset(__afl_edge_hist_ptr, 0, MAX_NGRAM_SIZE * sizeof(u32));
   __afl_edge_hist_idx = 0;
   __afl_prev_edge_acc = 0;
 
